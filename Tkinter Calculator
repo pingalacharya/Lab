@@ -1,0 +1,127 @@
+import os
+import shutil
+import random
+import json
+from collections import defaultdict
+
+# Simulate DFS Nodes (directories where blocks will be stored)
+DFS_NODES = ["node1", "node2", "node3", "node4"]
+BLOCK_SIZE = 1024  # 1KB block size
+REPLICATION_FACTOR = 3  # Number of replicas
+
+# Metadata for file storage (simulated)
+metadata = defaultdict(list)
+
+# Create directories for DFS nodes
+for node in DFS_NODES:
+    if not os.path.exists(node):
+        os.makedirs(node)
+
+def split_file(file_path):
+    """Split a file into blocks of size BLOCK_SIZE."""
+    with open(file_path, 'rb') as f:
+        file_data = f.read()
+
+    blocks = []
+    for i in range(0, len(file_data), BLOCK_SIZE):
+        blocks.append(file_data[i:i + BLOCK_SIZE])
+
+    return blocks
+
+def distribute_blocks(blocks):
+    """Distribute blocks across DFS nodes with replication."""
+    block_locations = {}
+    
+    for idx, block in enumerate(blocks):
+        block_id = f"block_{idx}"
+
+        # Select nodes randomly to store the block
+        nodes = random.sample(DFS_NODES, REPLICATION_FACTOR)
+        block_locations[block_id] = nodes
+
+        # Store the block in the selected nodes
+        for node in nodes:
+            with open(os.path.join(node, block_id), 'wb') as f:
+                f.write(block)
+
+    return block_locations
+
+def store_file(file_path):
+    """Store a file in the distributed system."""
+    blocks = split_file(file_path)
+    block_locations = distribute_blocks(blocks)
+
+    # Update metadata
+    file_name = os.path.basename(file_path)
+    metadata[file_name] = block_locations
+
+    # Save metadata to a JSON file
+    with open('metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=4)
+
+    print(f"File '{file_name}' stored successfully with replication!")
+
+def retrieve_file(file_name):
+    """Retrieve a file from the distributed system."""
+    if file_name not in metadata:
+        print(f"File '{file_name}' not found!")
+        return
+
+    block_locations = metadata[file_name]
+    blocks = []
+
+    # Retrieve blocks from the DFS nodes
+    for block_id, nodes in block_locations.items():
+        block_found = False
+        for node in nodes:
+            block_path = os.path.join(node, block_id)
+            if os.path.exists(block_path):
+                with open(block_path, 'rb') as f:
+                    blocks.append(f.read())
+                block_found = True
+                break
+
+        if not block_found:
+            print(f"Block {block_id} not found in any node!")
+            return
+
+    # Reassemble the file from the blocks
+    output_file = f"retrieved_{file_name}"
+    with open(output_file, 'wb') as f:
+        for block in blocks:
+            f.write(block)
+
+    print(f"File '{output_file}' retrieved successfully!")
+
+def delete_file(file_name):
+    """Delete a file from the DFS system."""
+    if file_name not in metadata:
+        print(f"File '{file_name}' not found!")
+        return
+
+    block_locations = metadata[file_name]
+    for block_id, nodes in block_locations.items():
+        for node in nodes:
+            block_path = os.path.join(node, block_id)
+            if os.path.exists(block_path):
+                os.remove(block_path)
+
+    # Remove the file's metadata
+    del metadata[file_name]
+
+    # Update the metadata file
+    with open('metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=4)
+
+    print(f"File '{file_name}' deleted successfully!")
+
+# Example usage
+if __name__ == "__main__":
+    # Simulate storing a large file in the DFS
+    store_file("sample_file.txt")
+    
+    # Retrieve the stored file
+    retrieve_file("sample_file.txt")
+    
+    # Delete the file
+    delete_file("sample_file.txt")
