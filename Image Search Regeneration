@@ -1,0 +1,86 @@
+import os
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.applications.vgg16 import preprocess_input
+from tensorflow.keras.models import Model
+from sklearn.metrics.pairwise import cosine_similarity
+
+def load_and_preprocess_image(image_path, target_size=(224, 224)):
+    """
+    Load and preprocess an image for feature extraction.
+    :param image_path: Path to the image
+    :param target_size: Target size for resizing
+    :return: Preprocessed image
+    """
+    image = cv2.imread(image_path)
+    image = cv2.resize(image, target_size)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = np.expand_dims(image, axis=0)
+    return preprocess_input(image)
+
+def extract_features(image_path, model, target_size=(224, 224)):
+    """
+    Extract features from an image using a pre-trained model.
+    :param image_path: Path to the image
+    :param model: Pre-trained model
+    :param target_size: Target size for resizing
+    :return: Feature vector
+    """
+    image = load_and_preprocess_image(image_path, target_size)
+    features = model.predict(image)
+    return features.flatten()
+
+def search_and_display_top_results_regeneration(target_image_path, dataset_path, model, top_n=5):
+    """
+    Search for images in a dataset matching a specific target image by deep features.
+    Display the top N results.
+    :param target_image_path: Path to the target image
+    :param dataset_path: Path to the dataset folder
+    :param model: Pre-trained model for feature extraction
+    :param top_n: Number of top results to display
+    """
+    # Extract features for the target image
+    target_features = extract_features(target_image_path, model)
+    
+    results = []
+    for image_name in os.listdir(dataset_path):
+        image_path = os.path.join(dataset_path, image_name)
+        image = cv2.imread(image_path)
+        if image is None:
+            continue
+        # Extract features for the dataset image
+        image_features = extract_features(image_path, model)
+        similarity = cosine_similarity([target_features], [image_features])[0][0]
+        results.append((similarity, image_name, image))
+    
+    # Sort results by similarity in descending order
+    results.sort(key=lambda x: x[0], reverse=True)
+    
+    # Display the target image and top N results
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, top_n + 1, 1)
+    target_image = cv2.imread(target_image_path)
+    plt.imshow(cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB))
+    plt.title("Target Image")
+    plt.axis("off")
+    
+    for i, (similarity, image_name, image) in enumerate(results[:top_n]):
+        plt.subplot(1, top_n + 1, i + 2)
+        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        plt.title(f"Match {i + 1}\n({similarity:.2f})")
+        plt.axis("off")
+    
+    plt.show()
+
+# Example usage:
+# Load the VGG16 model without the classification head
+base_model = VGG16(weights="imagenet", include_top=False, pooling="avg")
+
+# Paths
+target_image_path = "path_to_target_image.jpg"
+dataset_folder = "path_to_dataset/"
+
+# Perform search and display results
+search_and_display_top_results_regeneration(target_image_path, dataset_folder, base_model)
