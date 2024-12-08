@@ -1,0 +1,86 @@
+from struct import pack, unpack
+
+# Parameters for RC5-32/12/16
+WORD_SIZE = 32  # Word size in bits
+ROUNDS = 12     # Number of rounds
+KEY_SIZE = 16   # Key size in bytes
+P = 0xB7E15163  # Magic constant P
+Q = 0x9E3779B9  # Magic constant Q
+BLOCK_SIZE = 8  # Block size in bytes for RC5-32
+
+def pad(data):
+    """Apply PKCS#7 padding."""
+    pad_len = BLOCK_SIZE - (len(data) % BLOCK_SIZE)
+    return data + bytes([pad_len] * pad_len)
+
+def unpad(data):
+    """Remove PKCS#7 padding."""
+    pad_len = data[-1]
+    return data[:-pad_len]
+
+def rotate_left(x, y, word_size=WORD_SIZE):
+    """Rotate x left by y bits."""
+    return ((x << y) & (2**word_size - 1)) | (x >> (word_size - y))
+
+def rotate_right(x, y, word_size=WORD_SIZE):
+    """Rotate x right by y bits."""
+    return ((x >> y) | (x << (word_size - y))) & (2**word_size - 1)
+
+def key_expansion(key, word_size=WORD_SIZE, rounds=ROUNDS):
+    """Expand the key into the round subkeys."""
+    L = list(unpack(f"<{len(key)//4}I", key.ljust(KEY_SIZE, b'\x00')))
+    S = [(P + i * Q) % (2**word_size) for i in range(2 * (rounds + 1))]
+    A = B = i = j = 0
+    n = 3 * max(len(L), len(S))
+    for _ in range(n):
+        A = S[i] = rotate_left((S[i] + A + B) % (2**word_size), 3, word_size)
+        B = L[j] = rotate_left((L[j] + A + B) % (2**word_size), (A + B) % word_size, word_size)
+        i = (i + 1) % len(S)
+        j = (j + 1) % len(L)
+    return S
+
+def encrypt_block(plaintext, subkeys, word_size=WORD_SIZE, rounds=ROUNDS):
+    """Encrypt a single block."""
+    A, B = unpack("<2I", plaintext)
+    A = (A + subkeys[0]) % (2**word_size)
+    B = (B + subkeys[1]) % (2**word_size)
+    for i in range(1, rounds + 1):
+        A = (rotate_left(A ^ B, B % word_size, word_size) + subkeys[2 * i]) % (2**word_size)
+        B = (rotate_left(B ^ A, A % word_size, word_size) + subkeys[2 * i + 1]) % (2**word_size)
+    return pack("<2I", A, B)
+
+def decrypt_block(ciphertext, subkeys, word_size=WORD_SIZE, rounds=ROUNDS):
+    """Decrypt a single block."""
+    A, B = unpack("<2I", ciphertext)
+    for i in range(rounds, 0, -1):
+        B = rotate_right((B - subkeys[2 * i + 1]) % (2**word_size), A % word_size, word_size) ^ A
+        A = rotate_right((A - subkeys[2 * i]) % (2**word_size), B % word_size, word_size) ^ B
+    B = (B - subkeys[1]) % (2**word_size)
+    A = (A - subkeys[0]) % (2**word_size)
+    return pack("<2I", A, B)
+
+def rc5_encrypt(plaintext, key):
+    """Encrypt a plaintext using RC5."""
+    subkeys = key_expansion(key)
+    plaintext = pad(plaintext)  # Add padding
+    ciphertext = b''.join(encrypt_block(plaintext[i:i+8], subkeys) for i in range(0, len(plaintext), 8))
+    return ciphertext
+
+def rc5_decrypt(ciphertext, key):
+    """Decrypt a ciphertext using RC5."""
+    subkeys = key_expansion(key)
+    plaintext = b''.join(decrypt_block(ciphertext[i:i+8], subkeys) for i in range(0, len(ciphertext), 8))
+    return unpad(plaintext)  # Remove padding
+
+# Example usage
+if __name__ == "__main__":
+    key = b"secret_key_12345"  # 16-byte key
+    plaintext = b"HelloRC5!"  # Original plaintext
+    print(f"Original:   {plaintext}")
+
+    ciphertext = rc5_encrypt(plaintext, key)
+    print(f"Ciphertext: {ciphertext.hex()}")
+
+    decrypted = rc5_decrypt(ciphertext, key)
+    print(f"Decrypted:  {decrypted}")
+    assert plaintext == decrypted, "Decryption failed! The plaintext and decrypted text do not match."
