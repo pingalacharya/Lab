@@ -1,0 +1,65 @@
+#include <iostream>
+#include <vector>
+#include <thread>
+#include <algorithm>
+#include <future>
+
+using namespace std;
+
+// Function to partition the array
+int partition(vector<int>& arr, int low, int high) {
+    int pivot = arr[high]; // Use the last element as the pivot
+    int i = low - 1; // Index of smaller element
+
+    for (int j = low; j < high; ++j) {
+        if (arr[j] < pivot) {
+            ++i;
+            swap(arr[i], arr[j]);
+        }
+    }
+    swap(arr[i + 1], arr[high]);
+    return i + 1;
+}
+
+// Sequential QuickSort function
+void quickSortSequential(vector<int>& arr, int low, int high) {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+        quickSortSequential(arr, low, pi - 1);
+        quickSortSequential(arr, pi + 1, high);
+    }
+}
+
+// Parallel QuickSort function
+void quickSortParallel(vector<int>& arr, int low, int high, int depth) {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+
+        // Parallelize only up to a certain depth
+        if (depth > 0) {
+            future<void> leftTask = async(launch::async, quickSortParallel, ref(arr), low, pi - 1, depth - 1);
+            quickSortParallel(arr, pi + 1, high, depth - 1);
+            leftTask.get(); // Wait for the left partition to complete
+        } else {
+            // Fall back to sequential sorting
+            quickSortSequential(arr, low, pi - 1);
+            quickSortSequential(arr, pi + 1, high);
+        }
+    }
+}
+
+int main() {
+    vector<int> data = {724, 489, 510, 548, 347, 996, 169, 831, 48, 450, 141, 153, 325, 282, 479, 255, 453, 935, 690, 372};
+    cout << "Original Array: ";
+    for (int num : data) cout << num << " ";
+    cout << endl;
+
+    int maxDepth = 4; // Limit depth for parallelization
+    quickSortParallel(data, 0, data.size() - 1, maxDepth);
+
+    cout << "Sorted Array:   ";
+    for (int num : data) cout << num << " ";
+    cout << endl;
+
+    return 0;
+}
