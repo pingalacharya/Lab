@@ -1,0 +1,72 @@
+import cv2
+import numpy as np
+import os
+from skimage.metrics import structural_similarity as ssim
+import matplotlib.pyplot as plt
+
+def extract_edges(image):
+    """
+    Extract edges from an image using the Canny edge detection method.
+    :param image: Input image
+    :return: Edge-detected image
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    return edges
+
+def compare_edge_images(edge1, edge2):
+    """
+    Compare two edge-detected images using SSIM.
+    :param edge1: Edge-detected image 1
+    :param edge2: Edge-detected image 2
+    :return: Similarity score
+    """
+    score, _ = ssim(edge1, edge2, full=True)
+    return score
+
+def search_and_display_top_results_shape(target_image_path, dataset_path, top_n=5):
+    """
+    Search for images in a dataset matching a specific target image by edge features.
+    Display the top N results.
+    :param target_image_path: Path to the target image
+    :param dataset_path: Path to the dataset folder
+    :param top_n: Number of top results to display
+    """
+    # Load target image and extract edges
+    target_image = cv2.imread(target_image_path)
+    target_edges = extract_edges(target_image)
+    
+    results = []
+    for image_name in os.listdir(dataset_path):
+        image_path = os.path.join(dataset_path, image_name)
+        image = cv2.imread(image_path)
+        if image is None:
+            continue
+        # Extract edges and compare
+        image_edges = extract_edges(image)
+        similarity = compare_edge_images(target_edges, image_edges)
+        results.append((similarity, image_name, image))
+    
+    # Sort results by similarity in descending order
+    results.sort(key=lambda x: x[0], reverse=True)
+    
+    # Display the target image and top N results
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, top_n + 1, 1)
+    plt.imshow(cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB))
+    plt.title("Target Image")
+    plt.axis("off")
+    
+    for i, (similarity, image_name, image) in enumerate(results[:top_n]):
+        plt.subplot(1, top_n + 1, i + 2)
+        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        plt.title(f"Match {i + 1}\n({similarity:.2f})")
+        plt.axis("off")
+    
+    plt.show()
+
+# Example usage:
+target_image_path = "path_to_target_image.jpg"
+dataset_folder = "path_to_dataset/"
+
+search_and_display_top_results_shape(target_image_path, dataset_folder)
