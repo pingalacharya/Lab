@@ -1,0 +1,89 @@
+import cv2
+import numpy as np
+import os
+from skimage.feature import local_binary_pattern
+import matplotlib.pyplot as plt
+
+def extract_lbp_features(image, num_points=24, radius=8):
+    """
+    Extract Local Binary Pattern (LBP) features from an image.
+    :param image: Input image
+    :param num_points: Number of circularly symmetric neighbor points
+    :param radius: Radius of circle
+    :return: Flattened LBP histogram
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    lbp = local_binary_pattern(gray, num_points, radius, method="uniform")
+    (hist, _) = np.histogram(lbp.ravel(),
+                             bins=np.arange(0, num_points + 3),
+                             range=(0, num_points + 2))
+    # Normalize the histogram
+    hist = hist.astype("float")
+    hist /= hist.sum()
+    return hist
+
+def compare_histograms(hist1, hist2, method="correlation"):
+    """
+    Compare two histograms using a specified method.
+    :param hist1: First histogram
+    :param hist2: Second histogram
+    :param method: Histogram comparison method
+    :return: Similarity score
+    """
+    if method == "correlation":
+        return cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
+    elif method == "chi-square":
+        return cv2.compareHist(hist1, hist2, cv2.HISTCMP_CHISQR)
+    else:
+        raise ValueError("Unsupported comparison method.")
+
+def search_and_display_top_results_texture(target_image_path, dataset_path, top_n=5, method="correlation"):
+    """
+    Search for images in a dataset matching a specific target image by texture features (LBP).
+    Display the top N results.
+    :param target_image_path: Path to the target image
+    :param dataset_path: Path to the dataset folder
+    :param top_n: Number of top results to display
+    :param method: Histogram comparison method
+    """
+    # Load target image and extract LBP features
+    target_image = cv2.imread(target_image_path)
+    target_hist = extract_lbp_features(target_image)
+    
+    results = []
+    for image_name in os.listdir(dataset_path):
+        image_path = os.path.join(dataset_path, image_name)
+        image = cv2.imread(image_path)
+        if image is None:
+            continue
+        # Extract LBP features and compare
+        image_hist = extract_lbp_features(image)
+        similarity = compare_histograms(target_hist, image_hist, method)
+        results.append((similarity, image_name, image))
+    
+    # Sort results by similarity in descending order
+    if method == "correlation":
+        results.sort(key=lambda x: x[0], reverse=True)
+    else:  # For Chi-Square, lower values mean better matches
+        results.sort(key=lambda x: x[0])
+    
+    # Display the target image and top N results
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, top_n + 1, 1)
+    plt.imshow(cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB))
+    plt.title("Target Image")
+    plt.axis("off")
+    
+    for i, (similarity, image_name, image) in enumerate(results[:top_n]):
+        plt.subplot(1, top_n + 1, i + 2)
+        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        plt.title(f"Match {i + 1}\n({similarity:.2f})")
+        plt.axis("off")
+    
+    plt.show()
+
+# Example usage:
+target_image_path = "path_to_target_image.jpg"
+dataset_folder = "path_to_dataset/"
+
+search_and_display_top_results_texture(target_image_path, dataset_folder)
